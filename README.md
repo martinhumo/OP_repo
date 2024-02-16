@@ -1,1 +1,2 @@
 # OP_repo
+This repo consists of the .py file with the functions to calculate the order parameters for each frame of a molecular dynamics simulation, as well as the notebooks to use these functions and generate the processed files.
