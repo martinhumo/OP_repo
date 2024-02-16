@@ -195,7 +195,7 @@ class Trajectory:
         return S2_evol
 
 
-    def compute_structure_factor(self, nb, Sigma,fc):
+    def compute_structure_factor(self, nb, Sigma, m):
         """This function take the trajectory and returns the structure factor
          S(Lambda) and SmAOP (SmA Order Parameter) as the value of the highest peak .
         Returns: S(Lambda) [], SmAOP []
@@ -215,11 +215,10 @@ class Trajectory:
 
 
         nm = self.n_atoms//nb #molecules number
-        L = (nb-1)*(Sigma/2) + Sigma #molecule lenght
-        Qz =  np.linspace( 0.5, nb, 10*100)
+        Qz =  np.linspace( 0.25, 3.0, 10000) #Qz = 2pi/delta , delta = layer 
         Ss = np.zeros((self.n_steps, len(Qz))) #Structure factor for step
 
-        Zp = np.zeros(self.n_atoms) #Atoms Z component for step
+        Zp = np.zeros(nm) #Atoms Z component for step
 
         for step in range(self.n_steps):
             data_box    = np.array(self.boxsize[step])#Step box size
@@ -244,12 +243,9 @@ class Trajectory:
                     else:
                         moleculeu[i+1,2] = molecule[i+1,2]
 
-                Zp[(mol-1)*nb:(mol*nb)] = moleculeu[:,2]
+                Zp[(mol-1)] =np.average(moleculeu, axis=0, weights=m)[2]  #z component of each particle(molecule mass center)
 
             Ss[step] = np.abs(np.sum(np.exp( np.outer(Zp,Qz*1j)),axis=0)) #VERRR PAPER : Naderi, S., & van der Schoot, P. (2014). Effect of bending flexibility on the phase behavior and dynamics of rods. The Journal of Chemical Physics, 141(12), 124901. doi:10.1063/1.4895730
-        S = (1/self.n_atoms)*np.mean(Ss,axis=0)
-        print('SmAOP:',np.max(S[1:]))
-        from matplotlib import pyplot as plt
-        plt.rc('font', family='serif')
-        fig, axs = plt.subplots(1,figsize=(4, 4), dpi=240)
-        axs.plot( Qz , S,'g-',marker ='1')
+                                                                          #Ver Paper: maMilchev, A., Nikoubashman, A., & Binder, K. (2019). The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. Computational Materials Science, 166(May), 230–239. https://doi.org/10.1016/j.commatsci.2019.04.017
+        S = (1/nm)*np.mean(Ss,axis=0) #Structure factor in function of Qz
+        return np.max(S)
