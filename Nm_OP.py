@@ -249,3 +249,108 @@ class Trajectory:
                                                                           #Ver Paper: maMilchev, A., Nikoubashman, A., & Binder, K. (2019). The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. Computational Materials Science, 166(May), 230–239. https://doi.org/10.1016/j.commatsci.2019.04.017
         S = (1/nm)*np.mean(Ss,axis=0) #Structure factor in function of Qz
         return np.max(S)
+    
+    def compute_hexatic_bond_order(self, nb, m, Sigma):
+        """This function take the trajectory and returns the hexatic bond order parameter
+        (H6OP)  .
+        Returns:  H6OP [Beads diameter]
+        Needs:
+        *self.coordinates: atoms positions [a.u.]
+        *self.boxsize:
+        *nb: atoms per molecule []
+        *m: mass of the atoms [kg]
+        *Sigma: particle diameter [a.u.].
+
+
+        References:
+        (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. [2019]
+        (2)  
+        """
+
+        print('--------------------')
+        print('Computing Structure Factor ')
+
+
+
+        nm = self.n_atoms//nb #molecules number
+        L = (nb-1)*Sigma/2 + Sigma
+
+        hexatic_bond_order = np.zeros((self.n_steps))
+        for step in range(self.n_steps):
+            data_box = np.array(self.boxsize[step])  # Step box size
+            box = (data_box[:, 1] - data_box[:, 0]) * 0.5
+
+            data_beads = np.array(self.coordinates[step])#step atoms cordinates
+            mass_centers_unwrapped = [] #frame molecule mass centers 
+            for mol in np.arange(1,nm+1,1): 
+                molecule = data_beads[(mol-1)*nb:(mol*nb),:]
+
+                moleculeu = np.zeros(molecule.shape) #molecule with unwrapped cordinates
+                moleculeu[0,:] = molecule[0,:]
+                for i in range(nb-1):                #p.b.c. in z direction
+                    dist_z = (molecule[i+1,2]-moleculeu[i,2])
+                    if dist_z > box[2]:
+                        moleculeu[i+1,2] = molecule[i+1,2] - box[2]*2.
+                    elif dist_z <= (-box[2]):
+                        moleculeu[i+1,2] = molecule[i+1,2] + box[2]*2.
+                    else:
+                        moleculeu[i+1,2] = molecule[i+1,2]
+                mol_mass_center = np.average(moleculeu, axis=0, weights=m)
+                mass_centers_unwrapped.append(mol_mass_center)
+            
+            #loop over each mass center
+            for i in range(len(mass_centers_unwrapped)):
+                mol_i = mass_centers_unwrapped[i].copy()
+                #loop over j != i
+                exp_i = 0
+                nearest_neighbors = 0
+                for j in range(len(mass_centers_unwrapped)):
+                    mol_j = mass_centers_unwrapped[j].copy()
+                    if i != j:
+                        #check distance in x y z direction for periodic boundary conditions, if true move the mass center
+                        dist_x = mol_j[0] - mol_i[0]
+                        dist_y = mol_j[1] - mol_i[1]
+                        dist_z = mol_j[2] - mol_i[2]
+                        if dist_x > box[0]:
+                            mol_j[0] = mol_j[0] - box[0]*2.
+                        elif dist_x <= (-box[0]):
+                            mol_j[0] = mol_j[0] + box[0]*2.
+                        else:
+                            mol_j[0] = mol_j[0]
+
+                        if dist_y > box[1]:
+                            mol_j[1] = mol_j[1] - box[1]*2.
+                        elif dist_y <= (-box[1]):
+                            mol_j[1] = mol_j[1] + box[1]*2.
+                        else:
+                            mol_j[1] = mol_j[1]
+
+                        if dist_z > box[2]:
+                            mol_j[2] = mol_j[2] - box[2]*2.
+                        elif dist_z <= (-box[2]):
+                            mol_j[2] = mol_j[2] + box[2]*2.
+                        else:
+                            mol_j[2] = mol_j[2]
+
+                        #calculate xy vector
+                        vector_xy = mol_j - mol_i
+
+                        #calculate distance in z and xy
+                        dist_xy = np.linalg.norm(vector_xy)
+                        dist_z = abs(mol_j[2] - mol_i[2])
+
+                        #calculate hexatic bond order
+                        if dist_xy <= 1.7*Sigma and dist_z <= L:
+                            #calculate angle between vector_xy and x axis (1,0)
+                            cos_phi_i_j = np.dot(vector_xy , np.array([1, 0])) / (dist_xy * 1)  #Normalized vectors
+                            phi_i_j = np.arccos(cos_phi_i_j)
+                            
+                            exp_i_j = np.exp(6j*phi_i_j)
+                            exp_i += exp_i_j
+                            nearest_neighbors += 1
+
+                    else:
+                        continue
+                #Sum the contribution of i to hexatic bond order (revisar porque para cada molecula no se suma)
+                hexatic_bond_order[step] += exp_i / nearest_neighbors
+                        
