@@ -93,15 +93,15 @@ class Trajectory:
                 moleculeu[0,:] = molecule[0,:]
                 for i in range(nb-1):
                     dist = (molecule[i+1]-moleculeu[i])
-                    for xyz in (0,1,2):
-                        if dist[xyz]>box[xyz]:
-                            dist[xyz] = dist[xyz] - box[xyz]*2.
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
-                        elif dist[xyz]<=(-box[xyz]):
-                            dist[xyz] = dist[xyz] + box[xyz]*2.
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
+                    for dim in (0,1,2):
+                        if dist[dim]>box[dim]:
+                            dist[dim] = dist[dim] - box[dim]*2.
+                            moleculeu[i+1,dim] = molecule[i+1,dim] - box[dim]*2.
+                        elif dist[dim]<=(-box[dim]):
+                            dist[dim] = dist[dim] + box[dim]*2.
+                            moleculeu[i+1,dim] = molecule[i+1,dim] + box[dim]*2.
                         else:
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz]
+                            moleculeu[i+1,dim] = molecule[i+1,dim]
                     bondvector = np.array(dist)
                     bondvector /= np.linalg.norm(bondvector)
                     bondvectors[step,j ,:] =  bondvector
@@ -162,15 +162,15 @@ class Trajectory:
                 moleculeu[0,:] = molecule[0,:]
                 for i in range(nb-1):
                     dist = (molecule[i+1]-moleculeu[i])
-                    for xyz in (0,1,2):
-                        if dist[xyz]>box[xyz]:
-                            dist[xyz] = dist[xyz] - box[xyz]*2.
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
-                        elif dist[xyz]<=(-box[xyz]):
-                            dist[xyz] = dist[xyz] + box[xyz]*2.
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
+                    for dim in (0,1,2):
+                        if dist[dim]>box[dim]:
+                            dist[dim] = dist[dim] - box[dim]*2.
+                            moleculeu[i+1,dim] = molecule[i+1,dim] - box[dim]*2.
+                        elif dist[dim]<=(-box[dim]):
+                            dist[dim] = dist[dim] + box[dim]*2.
+                            moleculeu[i+1,dim] = molecule[i+1,dim] + box[dim]*2.
                         else:
-                            moleculeu[i+1,xyz] = molecule[i+1,xyz]
+                            moleculeu[i+1,dim] = molecule[i+1,dim]
                     bondvector = np.array(dist)
                     bondvector /= np.linalg.norm(bondvector)
                     bondvectors[j ,:] =  bondvector
@@ -268,13 +268,12 @@ class Trajectory:
 
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. [2019]
-        (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]  
+        (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]
+        (3) Numerical study of the phase behavior of rod-like colloidal particles with attractive tips [2021]
         """
 
         print('--------------------')
         print('Computing Hexatic Bond Order ')
-
-
 
         nm = self.n_atoms//nb #molecules number
         L = (nb-1)*Sigma/2 + Sigma
@@ -285,23 +284,24 @@ class Trajectory:
             box = (data_box[:, 1] - data_box[:, 0]) * 0.5
 
             data_beads = np.array(self.coordinates[step])#step atoms cordinates
-            mass_centers_unwrapped = [] #frame molecule mass centers 
-            for mol in np.arange(1,nm+1,1): 
+            mass_centers_unwrapped = [] #frame molecule mass centers
+            for mol in np.arange(1,nm+1,1):
                 molecule = data_beads[(mol-1)*nb:(mol*nb),:]
 
                 moleculeu = np.zeros(molecule.shape) #molecule with unwrapped cordinates
                 moleculeu[0,:] = molecule[0,:]
-                for i in range(nb-1):                #p.b.c. in z direction
-                    dist_z = (molecule[i+1,2]-moleculeu[i,2])
-                    if dist_z > box[2]:
-                        moleculeu[i+1,2] = molecule[i+1,2] - box[2]*2.
-                    elif dist_z <= (-box[2]):
-                        moleculeu[i+1,2] = molecule[i+1,2] + box[2]*2.
-                    else:
-                        moleculeu[i+1,2] = molecule[i+1,2]
+                for i in range(nb-1):                #p.b.c. in x y z direction
+                    for dim in range(3):
+                        dist_z = (molecule[i+1,dim]-moleculeu[i,dim])
+                        if dist_z > box[dim]:
+                            moleculeu[i+1,dim] = molecule[i+1,dim] - box[dim]*2.
+                        elif dist_z <= (-box[dim]):
+                            moleculeu[i+1,dim] = molecule[i+1,dim] + box[dim]*2.
+                        else:
+                            moleculeu[i+1,dim] = molecule[i+1,dim]
                 mol_mass_center = np.average(moleculeu, axis=0, weights=m)
                 mass_centers_unwrapped.append(mol_mass_center)
-            
+
             #loop over each mass center
             for i in range(len(mass_centers_unwrapped)):
                 mol_i = mass_centers_unwrapped[i].copy()
@@ -328,9 +328,9 @@ class Trajectory:
                         #calculate hexatic bond order
                         if dist_xy <= 1.7*Sigma and dist_z <= L:
                             #calculate angle between vector_xy and x axis (1,0)
-                            cos_phi_i_j = np.dot(vector_xy , np.array([1, 0])) / (dist_xy * 1)  #Normalized vectors
+                            cos_phi_i_j = np.dot(vector_xy / dist_xy , np.array([1, 0])) #/ (1.0 * 1.0)  #Dot product(v1, v2) / |v1| |v2|
                             phi_i_j = np.arccos(cos_phi_i_j)
-                            
+
                             exp_i_j = np.exp(6j*phi_i_j)
                             exp_i += exp_i_j
                             nearest_neighbors += 1
@@ -338,8 +338,9 @@ class Trajectory:
                     else:
                         continue
                 #Sum the contribution of i to hexatic bond order (revisar porque para cada molecula no se suma)
-                hexatic_bond_order[step, i] += exp_i / nearest_neighbors
-        
+                if nearest_neighbors != 0:
+                    hexatic_bond_order[step, i] += exp_i / nearest_neighbors
+
         #Average real part and imaginary part in each step
         hexatic_bond_order_real = np.mean(np.real(hexatic_bond_order), axis=1)
         hexatic_bond_order_imag = np.mean(np.imag(hexatic_bond_order), axis=1)
@@ -348,4 +349,5 @@ class Trajectory:
         hexatic_bond_order = np.sqrt(hexatic_bond_order_real**2 + hexatic_bond_order_imag**2) #See paper (2)
 
         return hexatic_bond_order
+
                         
