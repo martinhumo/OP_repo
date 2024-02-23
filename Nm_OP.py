@@ -195,27 +195,29 @@ class Trajectory:
         return S2_evol
 
 
-    def compute_structure_factor(self, nb, Sigma, m):
+    def compute_structure_factor(self, nb, m):
         """This function take the trajectory and returns the structure factor
-         S(Lambda) and SmAOP (SmA Order Parameter) as the value of the highest peak .
-        Returns: S(Lambda) [], SmAOP []
+         SmAOP (SmA Order Parameter) as the value of the highest peak .
+        Returns:  SmAOP [Beads diameter]
         Needs:
         *self.coordinates: atoms positions [a.u.]
         *self.boxsize:
         *nb: atoms per molecule []
-        *Sigma: particle diameter [m].
-        *fc: conversion factor to have positions in [m].
+        *m: mass of the atoms [kg]
+
 
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study [2019]
-        (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]"""
+        (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]
+        (3) Numerical study of the phase behavior of rod-like colloidal particles with attractive tips [2021]
+        """
 
         print('--------------------')
         print('Computing Structure Factor ')
 
 
         nm = self.n_atoms//nb #molecules number
-        Qz =  np.linspace( 0.25, 3.0, 10000) #Qz = 2pi/delta , delta = layer 
+        Qz =  np.linspace( 0.25, 3.0, 10000) #Qz = 2pi/delta , delta = layer
         Ss = np.zeros((self.n_steps, len(Qz))) #Structure factor for step
 
         Zp = np.zeros(nm) #Atoms Z component for step
@@ -249,11 +251,13 @@ class Trajectory:
                                                                           #Ver Paper: maMilchev, A., Nikoubashman, A., & Binder, K. (2019). The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. Computational Materials Science, 166(May), 230–239. https://doi.org/10.1016/j.commatsci.2019.04.017
         S = (1/nm)*np.mean(Ss,axis=0) #Structure factor in function of Qz
         return np.max(S)
-    
+        
+        
+        
     def compute_hexatic_bond_order(self, nb, m, Sigma):
         """This function take the trajectory and returns the hexatic bond order parameter
         (H6OP)  .
-        Returns:  H6OP [Beads diameter]
+        Returns:  H6OP [] for each step
         Needs:
         *self.coordinates: atoms positions [a.u.]
         *self.boxsize:
@@ -264,18 +268,18 @@ class Trajectory:
 
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. [2019]
-        (2)  
+        (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]  
         """
 
         print('--------------------')
-        print('Computing Structure Factor ')
+        print('Computing Hexatic Bond Order ')
 
 
 
         nm = self.n_atoms//nb #molecules number
         L = (nb-1)*Sigma/2 + Sigma
 
-        hexatic_bond_order = np.zeros((self.n_steps))
+        hexatic_bond_order = np.zeros((self.n_steps, nm), dtype=complex)
         for step in range(self.n_steps):
             data_box = np.array(self.boxsize[step])  # Step box size
             box = (data_box[:, 1] - data_box[:, 0]) * 0.5
@@ -301,39 +305,21 @@ class Trajectory:
             #loop over each mass center
             for i in range(len(mass_centers_unwrapped)):
                 mol_i = mass_centers_unwrapped[i].copy()
-                #loop over j != i
+                # loop over j != i
                 exp_i = 0
                 nearest_neighbors = 0
-                for j in range(len(mass_centers_unwrapped)):
-                    mol_j = mass_centers_unwrapped[j].copy()
+                for j, mol_j in enumerate(mass_centers_unwrapped):
                     if i != j:
-                        #check distance in x y z direction for periodic boundary conditions, if true move the mass center
-                        dist_x = mol_j[0] - mol_i[0]
-                        dist_y = mol_j[1] - mol_i[1]
-                        dist_z = mol_j[2] - mol_i[2]
-                        if dist_x > box[0]:
-                            mol_j[0] = mol_j[0] - box[0]*2.
-                        elif dist_x <= (-box[0]):
-                            mol_j[0] = mol_j[0] + box[0]*2.
-                        else:
-                            mol_j[0] = mol_j[0]
-
-                        if dist_y > box[1]:
-                            mol_j[1] = mol_j[1] - box[1]*2.
-                        elif dist_y <= (-box[1]):
-                            mol_j[1] = mol_j[1] + box[1]*2.
-                        else:
-                            mol_j[1] = mol_j[1]
-
-                        if dist_z > box[2]:
-                            mol_j[2] = mol_j[2] - box[2]*2.
-                        elif dist_z <= (-box[2]):
-                            mol_j[2] = mol_j[2] + box[2]*2.
-                        else:
-                            mol_j[2] = mol_j[2]
+                        # check distance in x y z direction for periodic boundary conditions, if true move the mass center
+                        dist = mol_j - mol_i
+                        for dim in range(3):
+                            if dist[dim] > box[dim]:
+                                mol_j[dim] -= box[dim] * 2.
+                            elif dist[dim] <= -box[dim]:
+                                mol_j[dim] += box[dim] * 2.
 
                         #calculate xy vector
-                        vector_xy = mol_j - mol_i
+                        vector_xy = mol_j[:2] - mol_i[:2]
 
                         #calculate distance in z and xy
                         dist_xy = np.linalg.norm(vector_xy)
@@ -352,5 +338,14 @@ class Trajectory:
                     else:
                         continue
                 #Sum the contribution of i to hexatic bond order (revisar porque para cada molecula no se suma)
-                hexatic_bond_order[step] += exp_i / nearest_neighbors
+                hexatic_bond_order[step, i] += exp_i / nearest_neighbors
+        
+        #Average real part and imaginary part in each step
+        hexatic_bond_order_real = np.mean(np.real(hexatic_bond_order), axis=1)
+        hexatic_bond_order_imag = np.mean(np.imag(hexatic_bond_order), axis=1)
+
+        #Absolute value of hexatic bond order
+        hexatic_bond_order = np.sqrt(hexatic_bond_order_real**2 + hexatic_bond_order_imag**2) #See paper (2)
+
+        return hexatic_bond_order
                         
