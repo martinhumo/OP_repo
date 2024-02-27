@@ -257,7 +257,7 @@ class Trajectory:
     def compute_hexatic_bond_order(self, nb, m, Sigma):
         """This function take the trajectory and returns the hexatic bond order parameter
         (H6OP)  .
-        Returns:  H6OP [] for each step
+        Returns:  H6OP [] mean over each step
         Needs:
         *self.coordinates: atoms positions [a.u.]
         *self.boxsize:
@@ -269,7 +269,6 @@ class Trajectory:
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study. [2019]
         (2) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]
-        (3) Numerical study of the phase behavior of rod-like colloidal particles with attractive tips [2021]
         """
 
         print('--------------------')
@@ -290,15 +289,18 @@ class Trajectory:
 
                 moleculeu = np.zeros(molecule.shape) #molecule with unwrapped cordinates
                 moleculeu[0,:] = molecule[0,:]
+                flag = False
                 for i in range(nb-1):                #p.b.c. in x y z direction
-                    for dim in range(3):
-                        dist_z = (molecule[i+1,dim]-moleculeu[i,dim])
-                        if dist_z > box[dim]:
-                            moleculeu[i+1,dim] = molecule[i+1,dim] - box[dim]*2.
-                        elif dist_z <= (-box[dim]):
-                            moleculeu[i+1,dim] = molecule[i+1,dim] + box[dim]*2.
+                    for xyz in range(3):
+                        dist_z = (molecule[i+1,xyz]-moleculeu[i,xyz])
+                        if dist_z > box[xyz]:
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
+                            flag = True
+                        elif dist_z <= (-box[xyz]):
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
+                            flag = True
                         else:
-                            moleculeu[i+1,dim] = molecule[i+1,dim]
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz]
                 mol_mass_center = np.average(moleculeu, axis=0, weights=m)
                 mass_centers_unwrapped.append(mol_mass_center)
 
@@ -348,6 +350,4 @@ class Trajectory:
         #Absolute value of hexatic bond order
         hexatic_bond_order = np.sqrt(hexatic_bond_order_real**2 + hexatic_bond_order_imag**2) #See paper (2)
 
-        return hexatic_bond_order
-
-                        
+        return  np.mean(hexatic_bond_order)
