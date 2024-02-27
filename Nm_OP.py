@@ -3,19 +3,21 @@ from ovito.io import import_file
 
 
 class Trajectory:
-    def __init__(self, filename, attr, skip):
+    def __init__(self, filename, attr, skip, fcx):
         """
         filename         : path to the trajectory file with sorted and format = id mol x y z fx fy fz vx vy vz
         attr             : particles attributes to be loaded in memory = coordinates(0), forces(1) or velocities(2)
         skip             : number of snapshots to be skipped between two configurations that are evaluated
                            (for example, if trajectory is 9000 steps long, and skip = 10, every tenth step
                            is evaluated, 900 steps in total; use skip = 1 to take every step of the MD)
+        fcx              : conversion factor to have positions in [m]
          """
         pipeline = import_file(filename) #import file
         self.n_atoms = pipeline.compute().particles.count #number of atoms
         self.n_steps_total = pipeline.source.num_frames
 
         self.skip = skip
+        self.fcx = fcx
         self.n_steps = self.n_steps_total // self.skip
 
         attributes = ('coordinates', 'forces', 'velocities')
@@ -35,9 +37,9 @@ class Trajectory:
             try:
 
                 if attr == 0:
-                    self.coordinates[step] = pipeline.compute(frame).particles.positions
-                    self.boxsize[step,:,0] = pipeline.compute(frame).cell[:,3]
-                    self.boxsize[step,:,1] = np.sum(pipeline.compute(frame).cell[:,:], axis=1)
+                    self.coordinates[step] = pipeline.compute(frame).particles.positions*fcx
+                    self.boxsize[step,:,0] = pipeline.compute(frame).cell[:,3]*fcx
+                    self.boxsize[step,:,1] = np.sum(pipeline.compute(frame).cell[:,:], axis=1)*fcx
                 elif attr == 1:
                     self.coordinates[step] = pipeline.compute(frame).particles.forces
                 elif attr == 2:
@@ -54,15 +56,14 @@ class Trajectory:
 
 
 
-    def compute_orientational_order_tensor(self, nb, fc):
+    def compute_orientational_order_tensor(self, nb):
         """This function take the trajectory and returns the the nematic order
         parameter and the vector director.
         Returns: NmOP [], vx[], vy[], vz[]
         Needs:
-        *self.coordinates: atoms positions [a.u.]
-        *self.boxsize:
+        *self.coordinates: atoms positions [m]
+        *self.boxsize: box [m]
         *nb: atoms per molecule []
-        *fc: conversion factor to have positions in [m].
 
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study [2019]"""
@@ -72,8 +73,6 @@ class Trajectory:
 
 
         nm = self.n_atoms//nb #molecules number
-        self.coordinates *= fc
-        self.boxsize *= fc
         bondvectors = np.zeros((self.n_steps, nm*(nb-1), 3)) #director vector of bond in each step for the whole system
 
         for step in range(self.n_steps):
@@ -122,15 +121,14 @@ class Trajectory:
         eigv = eigv[:,idx]
         return eig[0], eigv[:,0].T
 
-    def compute_orientational_order_tensor_evolution(self, nb, fc):
+    def compute_orientational_order_tensor_evolution(self, nb):
         """This function take the trajectory and returns the the nematic order
         parameter and the vector director for each frame.
         Returns: step[:n_steps,], [:n_steps,], NmOP [:n_steps,], vx[:n_steps,], vy[:n_steps,], vz[:n_steps,]
         Needs:
-        *self.coordinates: atoms positions [a.u.]
-        *self.boxsize:
+        *self.coordinates: atoms positions [m]
+        *self.boxsize: box [m]
         *nb: atoms per molecule []
-        *fc: conversion factor to have positions in [m].
 
         References:
         (1) The smectic phase in semiflexible polymer materials: A large scale molecular dynamics study [2019]"""
@@ -140,8 +138,6 @@ class Trajectory:
 
 
         nm = self.n_atoms//nb #molecules number
-        self.coordinates *= fc
-        self.boxsize *= fc
         bondvectors = np.zeros(( nm*(nb-1), 3)) #director vector of bond in each step for the whole system
         S2_evol = np.zeros((self.n_steps, 5))
 
@@ -200,7 +196,7 @@ class Trajectory:
          SmAOP (SmA Order Parameter) as the value of the highest peak .
         Returns:  SmAOP [Beads diameter]
         Needs:
-        *self.coordinates: atoms positions [a.u.]
+        *self.coordinates: atoms positions [m]
         *self.boxsize:
         *nb: atoms per molecule []
         *m: mass of the atoms [kg]
@@ -217,7 +213,7 @@ class Trajectory:
 
 
         nm = self.n_atoms//nb #molecules number
-        Qz =  np.linspace( 0.25, 3.0, 10000) #Qz = 2pi/delta , delta = layer
+        Qz =  np.linspace( 0.25, 3.0, 10000)*(1. / self.fcx) #Qz = 2pi/delta , delta = layer thickness
         Ss = np.zeros((self.n_steps, len(Qz))) #Structure factor for step
 
         Zp = np.zeros(nm) #Atoms Z component for step
@@ -259,11 +255,11 @@ class Trajectory:
         (H6OP)  .
         Returns:  H6OP [] mean over each step
         Needs:
-        *self.coordinates: atoms positions [a.u.]
-        *self.boxsize:
+        *self.coordinates: atoms positions [m]
+        *self.boxsize: box size [m]
         *nb: atoms per molecule []
         *m: mass of the atoms [kg]
-        *Sigma: particle diameter [a.u.].
+        *Sigma: particle diameter [m].
 
 
         References:
