@@ -324,7 +324,7 @@ class Trajectory:
                         dist_z = abs(mol_j[2] - mol_i[2])
 
                         #calculate hexatic bond order
-                        if dist_xy <= 1.7*Sigma and dist_z <= L:
+                        if dist_xy <= 1.7*Sigma and dist_z <= L/2:
                             #calculate angle between vector_xy and x axis (1,0)
                             cos_phi_i_j = np.dot(vector_xy / dist_xy , np.array([1, 0])) #/ (1.0 * 1.0)  #Dot product(v1, v2) / |v1| |v2|
                             phi_i_j = np.arccos(cos_phi_i_j)
