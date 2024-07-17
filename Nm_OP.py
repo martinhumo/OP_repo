@@ -190,76 +190,76 @@ class Trajectory:
 
         return S2_evol
     
-        def compute_orientational_order_tensor_evolution_tiberio(self, nb):
-            """This function take the trajectory and returns the the nematic order
-            parameter and the vector director for each frame.
-            Returns: step[:n_steps,], [:n_steps,], NmOP [:n_steps,], vx[:n_steps,], vy[:n_steps,], vz[:n_steps,]
-            Needs:
-            *self.coordinates: atoms positions [a.u.]
-            *self.boxsize:
-            *nb: atoms per molecule []
+    def compute_orientational_order_tensor_evolution_tiberio(self, nb):
+        """This function take the trajectory and returns the the nematic order
+        parameter and the vector director for each frame.
+        Returns: step[:n_steps,], [:n_steps,], NmOP [:n_steps,], vx[:n_steps,], vy[:n_steps,], vz[:n_steps,]
+        Needs:
+        *self.coordinates: atoms positions [a.u.]
+        *self.boxsize:
+        *nb: atoms per molecule []
 
-            References:
-            (1) An atomistic simulation for 4-cyano-4′-pentylbiphenyl and its homologue with a reoptimized force field. [2011] https://doi.org/10.1021/jp111408n
-            
-            """
+        References:
+        (1) An atomistic simulation for 4-cyano-4′-pentylbiphenyl and its homologue with a reoptimized force field. [2011] https://doi.org/10.1021/jp111408n
+        
+        """
 
-            print('--------------------')
-            print('Computing orientational_order_tensor ')
-
-
-            nm = self.n_atoms//nb #molecules number
-            bondvectors = np.zeros(( nm, 3)) #director vector of bond in each step for the whole system
-            S2_evol = np.zeros((self.n_steps, 5))
-
-            for step in range(self.n_steps):
-                data_box    = np.array(self.boxsize[step])#Step box size
-                A = data_box[0,1] - data_box[0,0]
-                B = data_box[1,1] - data_box[1,0]
-                C = data_box[2,1] - data_box[2,0]
-                box = np.array([A,B,C])*0.5
+        print('--------------------')
+        print('Computing orientational_order_tensor ')
 
 
-                data_beads = np.array(self.coordinates[step])#step atoms cordinates
-                for mol in np.arange(1,nm+1,1):
-                    molecule = data_beads[(mol-1)*nb:(mol*nb),:]
+        nm = self.n_atoms//nb #molecules number
+        bondvectors = np.zeros(( nm, 3)) #director vector of bond in each step for the whole system
+        S2_evol = np.zeros((self.n_steps, 5))
 
-                    moleculeu = np.empty(molecule.shape) #molecule with unwrapped cordinates
-                    moleculeu[0,:] = molecule[0,:]
-                    for i in range(nb-1):
-                        dist = (molecule[i+1]-moleculeu[i])
-                        for xyz in (0,1,2):
-                            if dist[xyz]>box[xyz]:
-                                dist[xyz] = dist[xyz] - box[xyz]*2.
-                                moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
-                            elif dist[xyz]<=(-box[xyz]):
-                                dist[xyz] = dist[xyz] + box[xyz]*2.
-                                moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
-                            else:
-                                moleculeu[i+1,xyz] = molecule[i+1,xyz]
-                    direct = moleculeu[0,:] - moleculeu[13,:]    #direction between N and C12 #Fig 2 Tiberio 2009
-                    bondvector = np.array(direct)
-                    bondvector /= np.linalg.norm(bondvector)
-                    bondvectors[mol-1 ,:] =  bondvector
-    
+        for step in range(self.n_steps):
+            data_box    = np.array(self.boxsize[step])#Step box size
+            A = data_box[0,1] - data_box[0,0]
+            B = data_box[1,1] - data_box[1,0]
+            C = data_box[2,1] - data_box[2,0]
+            box = np.array([A,B,C])*0.5
 
-                Q =  np.zeros((3,3))
-                for i in range(3):
-                    for j in range(3):
-                        if i == j:
-                            Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, i], axis=0) - 1)
+
+            data_beads = np.array(self.coordinates[step])#step atoms cordinates
+            for mol in np.arange(1,nm+1,1):
+                molecule = data_beads[(mol-1)*nb:(mol*nb),:]
+
+                moleculeu = np.empty(molecule.shape) #molecule with unwrapped cordinates
+                moleculeu[0,:] = molecule[0,:]
+                for i in range(nb-1):
+                    dist = (molecule[i+1]-moleculeu[i])
+                    for xyz in (0,1,2):
+                        if dist[xyz]>box[xyz]:
+                            dist[xyz] = dist[xyz] - box[xyz]*2.
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
+                        elif dist[xyz]<=(-box[xyz]):
+                            dist[xyz] = dist[xyz] + box[xyz]*2.
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
                         else:
-                            Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, j], axis=0))
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz]
+                direct = moleculeu[0,:] - moleculeu[13,:]    #direction between N and C12 #Fig 2 Tiberio 2009
+                bondvector = np.array(direct)
+                bondvector /= np.linalg.norm(bondvector)
+                bondvectors[mol-1 ,:] =  bondvector
 
 
-                eig , eigv = np.linalg.eig(Q)
-                idx = eig.argsort()[::-1] #highest to lowest
-                eig = eig[idx]
-                eigv = eigv[:,idx]
-                frame = step * self.skip
-                S2_evol[step,:] = np.concatenate(([frame, eig[0]],  eigv[:,0]), axis=None)
+            Q =  np.zeros((3,3))
+            for i in range(3):
+                for j in range(3):
+                    if i == j:
+                        Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, i], axis=0) - 1)
+                    else:
+                        Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, j], axis=0))
 
-            return S2_evol
+
+            eig , eigv = np.linalg.eig(Q)
+            idx = eig.argsort()[::-1] #highest to lowest
+            eig = eig[idx]
+            eigv = eigv[:,idx]
+            frame = step * self.skip
+            S2_evol[step,:] = np.concatenate(([frame, eig[0]],  eigv[:,0]), axis=None)
+
+        return S2_evol
 
 
 
