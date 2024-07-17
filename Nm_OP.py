@@ -189,6 +189,78 @@ class Trajectory:
             S2_evol[step,:] = np.concatenate(([frame, eig[0]],  eigv[:,0]), axis=None)
 
         return S2_evol
+    
+        def compute_orientational_order_tensor_evolution_tiberio(self, nb):
+            """This function take the trajectory and returns the the nematic order
+            parameter and the vector director for each frame.
+            Returns: step[:n_steps,], [:n_steps,], NmOP [:n_steps,], vx[:n_steps,], vy[:n_steps,], vz[:n_steps,]
+            Needs:
+            *self.coordinates: atoms positions [a.u.]
+            *self.boxsize:
+            *nb: atoms per molecule []
+
+            References:
+            (1) An atomistic simulation for 4-cyano-4′-pentylbiphenyl and its homologue with a reoptimized force field. [2011] https://doi.org/10.1021/jp111408n
+            
+            """
+
+            print('--------------------')
+            print('Computing orientational_order_tensor ')
+
+
+            nm = self.n_atoms//nb #molecules number
+            bondvectors = np.zeros(( nm, 3)) #director vector of bond in each step for the whole system
+            S2_evol = np.zeros((self.n_steps, 5))
+
+            for step in range(self.n_steps):
+                data_box    = np.array(self.boxsize[step])#Step box size
+                A = data_box[0,1] - data_box[0,0]
+                B = data_box[1,1] - data_box[1,0]
+                C = data_box[2,1] - data_box[2,0]
+                box = np.array([A,B,C])*0.5
+
+
+                data_beads = np.array(self.coordinates[step])#step atoms cordinates
+                for mol in np.arange(1,nm+1,1):
+                    molecule = data_beads[(mol-1)*nb:(mol*nb),:]
+
+                    moleculeu = np.empty(molecule.shape) #molecule with unwrapped cordinates
+                    moleculeu[0,:] = molecule[0,:]
+                    for i in range(nb-1):
+                        dist = (molecule[i+1]-moleculeu[i])
+                        for xyz in (0,1,2):
+                            if dist[xyz]>box[xyz]:
+                                dist[xyz] = dist[xyz] - box[xyz]*2.
+                                moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
+                            elif dist[xyz]<=(-box[xyz]):
+                                dist[xyz] = dist[xyz] + box[xyz]*2.
+                                moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
+                            else:
+                                moleculeu[i+1,xyz] = molecule[i+1,xyz]
+                    direct = moleculeu[0,:] - moleculeu[13,:]    #direction between N and C12 #Fig 2 Tiberio 2009
+                    bondvector = np.array(direct)
+                    bondvector /= np.linalg.norm(bondvector)
+                    bondvectors[mol-1 ,:] =  bondvector
+    
+
+                Q =  np.zeros((3,3))
+                for i in range(3):
+                    for j in range(3):
+                        if i == j:
+                            Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, i], axis=0) - 1)
+                        else:
+                            Q[i, j] = 0.5 * (np.mean(3 * bondvectors[:, i] * bondvectors[:, j], axis=0))
+
+
+                eig , eigv = np.linalg.eig(Q)
+                idx = eig.argsort()[::-1] #highest to lowest
+                eig = eig[idx]
+                eigv = eigv[:,idx]
+                frame = step * self.skip
+                S2_evol[step,:] = np.concatenate(([frame, eig[0]],  eigv[:,0]), axis=None)
+
+            return S2_evol
+
 
 
     def compute_structure_factor(self, nb, m):
@@ -347,3 +419,80 @@ class Trajectory:
         hexatic_bond_order = np.sqrt(hexatic_bond_order_real**2 + hexatic_bond_order_imag**2) #See paper (2)
 
         return  np.mean(hexatic_bond_order)
+    
+
+    def mc_pair_correlation_function(self, nb, m, Sigma, resolution=200):
+        """This function take the trajectory and returns the mean mass center pair correlation function (MPCF)  .
+        Returns: bins_distances [] array, MPCF [] array mean over all steps, StdMPCF [] array 
+        Needs:
+        *self.coordinates: atoms positions [m]
+        *self.boxsize: box size [m]
+        *nb: atoms per molecule []
+        *m: mass of the atoms [kg]
+        *Sigma: particle diameter [m]
+        *resolution: number of bins for the correlation function.
+
+        References:
+        (1) On the Phase Behaviour of Semi-Flexible Rod-Like Particles [2015]
+        (2) https://github.com/aberut/paircorrelation2d/blob/master/paircorrelation2d.py
+        (3) https://github.com/ggosti/PairCorrelationFunction/blob/main/pairCorrelationFunction.py
+        """
+
+        print('--------------------')
+        print('Computing MPCF...')
+
+        nm = self.n_atoms//nb #molecules number
+        L = (nb-1)*Sigma/2 + Sigma
+
+        mc_pair_correlations = np.zeros((self.n_steps, resolution-1))
+        bins_distances = np.linspace(0.0, L, resolution) #array of bins for the correlation function
+
+        for step in range(self.n_steps):
+            data_box = np.array(self.boxsize[step])  # Step box size
+            box = (data_box[:, 1] - data_box[:, 0]) * 0.5
+            rho = nm / ((box[0] * box[1] * box[2]) * 2.)
+
+            data_beads = np.array(self.coordinates[step])#step atoms cordinates
+            mass_centers_unwrapped = [] #frame molecule mass centers
+            for mol in np.arange(1,nm+1,1):
+                molecule = data_beads[(mol-1)*nb:(mol*nb),:]
+
+                moleculeu = np.zeros(molecule.shape) #molecule with unwrapped cordinates
+                moleculeu[0,:] = molecule[0,:]
+  
+                for i in range(nb-1):                #p.b.c. in x y z direction
+                    for xyz in range(3):
+                        dist_z = (molecule[i+1,xyz]-moleculeu[i,xyz])
+                        if dist_z > box[xyz]:
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] - box[xyz]*2.
+                        elif dist_z <= (-box[xyz]):
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz] + box[xyz]*2.
+                        else:
+                            moleculeu[i+1,xyz] = molecule[i+1,xyz]
+                mol_mass_center = np.average(moleculeu, axis=0, weights=m)
+                mass_centers_unwrapped.append(mol_mass_center)
+            mass_centers_unwrapped = np.array(mass_centers_unwrapped)
+
+            #Correlation function    
+            g_of_r=np.zeros(len(bins_distances)-1) #array of zeros for the correlation function
+            for ii in range(nm):
+                #coordinates of the current point
+                x_loc=mass_centers_unwrapped[ii,0]
+                y_loc=mass_centers_unwrapped[ii,1]
+                z_loc=mass_centers_unwrapped[ii,2]
+                
+                dist_to_loc_xy=np.sqrt((mass_centers_unwrapped[:,0]-x_loc)**2+
+                                    (mass_centers_unwrapped[:,1]-y_loc)**2) #distance of the current point to each other point
+                dist_to_loc_xy[ii]=np.inf #the distance from a point to itself is always zero (it is therefore excluded from the computation)
+                dist_to_loc_z = np.sqrt((mass_centers_unwrapped[:,2]-z_loc)**2) #distance of the current point to each other point
+                dist_to_loc_z[ii] = np.inf
+
+                dist_to_loc_layer = dist_to_loc_xy[dist_to_loc_z <= L/2] #distance of the current point to each other point in the same layer
+                
+                hist, bin_edges = np.histogram(dist_to_loc_layer,bins=bins_distances) 
+                deltaV =   np.pi* L * (bin_edges[1:]**2 - bin_edges[:-1]**2)
+                
+                g_of_r += hist / deltaV #computes the histogram of distances to the current point
+
+            mc_pair_correlations[step] = g_of_r / rho
+        return  bins_distances[1:] ,np.mean(mc_pair_correlations , axis=0), np.std(mc_pair_correlations, axis=0)
