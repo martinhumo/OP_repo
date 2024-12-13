@@ -1,6 +1,6 @@
 import numpy as np
 from ovito.io import import_file
-
+from tqdm import tqdm
 
 class Trajectory:
     def __init__(self, filename, attr, skip, fcx):
@@ -31,11 +31,9 @@ class Trajectory:
             self.boxsize = np.empty((self.n_steps, 3, 2))
         count = 0
         stop = self.n_steps
-        for step in range(self.n_steps):
-            print('Loading Frame:', step*skip,' ',end='\x1b[1K\r')
+        for step in tqdm(range(self.n_steps)):
             frame = step * self.skip
             try:
-
                 if attr == 0:
                     self.coordinates[step] = pipeline.compute(frame).particles.positions*fcx
                     self.boxsize[step,:,0] = pipeline.compute(frame).cell[:,3]*fcx
@@ -674,6 +672,7 @@ class Trajectory:
 
         Returns:
             float: Longitud de contorno promedio de las moléculas. [adim]
+            float: Desviación estándar de la longitud de contorno promedio de las moléculas. [adim]
         """
         n_steps, n_atoms, _ = self.coordinates.shape
         nm = n_atoms // nb  # Número de moléculas
@@ -705,4 +704,55 @@ class Trajectory:
                 contour_lengths.append(np.sum(distances))
         
         average_contour_length = np.mean(contour_lengths)
-        return average_contour_length
+        std_contour_length = np.std(contour_lengths)
+        return average_contour_length, std_contour_length
+    
+
+    def calculate_end_to_end_length(self, nb):
+        """
+        Calcula la longitud end-to-end promedio de moléculas lineales en la trayectoria.
+        
+        Needs:
+            *self.coordinates: atoms positions [m]
+            *self.boxsize: box [m]
+
+        Parameters:
+            nb (int): Número de átomos por molécula.
+
+        Returns:
+            float: Longitud end-to-end promedio de las moléculas. [adim]
+            float: Desviación estandard de la longitud end-to-end de las moléculas. [adim]
+        """
+        n_steps, n_atoms, _ = self.coordinates.shape
+        nm = n_atoms // nb  # Número de moléculas
+
+        end_to_end_lengths = []
+        for step in range(n_steps):
+            data_box = np.array(self.boxsize[step])  # Tamaño de la caja en este paso
+            box = (data_box[:, 1] - data_box[:, 0]) * 0.5
+            data_beads = np.array(self.coordinates[step])  # Coordenadas de los átomos en este paso
+            
+            for mol in range(nm):
+                molecule = data_beads[mol * nb:(mol + 1) * nb, :]  # Átomos de la molécula
+                molecule_unwrapped = np.zeros_like(molecule)
+                molecule_unwrapped[0, :] = molecule[0, :]
+                
+                # Desempaquetado para condiciones periódicas
+                for i in range(1, nb):
+                    for xyz in range(3):
+                        dist_z = molecule[i, xyz] - molecule_unwrapped[i - 1, xyz]
+                        if dist_z > box[xyz]:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz] - 2 * box[xyz]
+                        elif dist_z <= -box[xyz]:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz] + 2 * box[xyz]
+                        else:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz]
+                
+                # Calcular la distancia end-to-end
+                end_to_end_distance = np.linalg.norm(molecule_unwrapped[-1, :] - molecule_unwrapped[0, :])
+                end_to_end_lengths.append(end_to_end_distance)
+        
+        average_end_to_end_length = np.mean(end_to_end_lengths)
+        std_end_to_end_length = np.std(end_to_end_lengths)
+        return average_end_to_end_length, std_end_to_end_length
+
