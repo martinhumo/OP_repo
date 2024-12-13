@@ -756,3 +756,55 @@ class Trajectory:
         std_end_to_end_length = np.std(end_to_end_lengths)
         return average_end_to_end_length, std_end_to_end_length
 
+
+    def calculate_radial_distribution_function(self, nbins, rmax):
+        """
+        Calcula la función de distribución radial (RDF) entre todos los átomos.
+
+        Parameters:
+            nbins (int): Número de bins para dividir las distancias.
+            rmax (float): Máxima distancia a considerar para el RDF [m].
+
+        Returns:
+            tuple: 
+                - r (np.ndarray): Centros de los bins [m].
+                - g_r (np.ndarray): Valores normalizados del RDF.
+        """
+        n_steps, n_atoms, _ = self.coordinates.shape
+        rdf_histogram = np.zeros(nbins)
+        bin_edges = np.linspace(0, rmax, nbins + 1)
+        dr = bin_edges[1] - bin_edges[0]
+        r = bin_edges[:-1] + dr / 2  # Centros de los bins
+
+        for step in range(n_steps):
+            data_box = np.array(self.boxsize[step])  # Tamaño de la caja en este paso
+            box = (data_box[:, 1] - data_box[:, 0]) * 0.5  # Lados de la caja (mitad del tamaño)
+            data_beads = np.array(self.coordinates[step])  # Coordenadas de los átomos en este paso
+
+            # Calcular distancias entre pares de átomos
+            for i in range(n_atoms - 1):
+                for j in range(i + 1, n_atoms):
+                    dist_vector = data_beads[j, :] - data_beads[i, :]
+                    
+                    # Aplicar condiciones periódicas de contorno
+                    for xyz in range(3):
+                        if dist_vector[xyz] > box[xyz]:
+                            dist_vector[xyz] -= 2 * box[xyz]
+                        elif dist_vector[xyz] <= -box[xyz]:
+                            dist_vector[xyz] += 2 * box[xyz]
+
+                    distance = np.linalg.norm(dist_vector)
+
+                    # Acumular en el histograma si la distancia está en el rango
+                    if distance < rmax:
+                        bin_index = int(distance // dr)
+                        rdf_histogram[bin_index] += 2  # Contar el par (i, j) y (j, i)
+
+        # Normalización del RDF
+        volume = np.prod(box * 2)  # Volumen de la caja [m^3]
+        density = n_atoms / volume  # Densidad de átomos por volumen
+        normalization = (4 / 3) * np.pi * (bin_edges[1:]**3 - bin_edges[:-1]**3) * density * n_steps
+
+        g_r = rdf_histogram / normalization  # Función de distribución radial normalizada
+
+        return r, g_r
