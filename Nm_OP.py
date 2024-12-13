@@ -671,8 +671,8 @@ class Trajectory:
             nb (int): Número de átomos por molécula.
 
         Returns:
-            float: Longitud de contorno promedio de las moléculas. [adim]
-            float: Desviación estándar de la longitud de contorno promedio de las moléculas. [adim]
+            float: Longitud de contorno promedio de las moléculas. [m]
+            float: Desviación estándar de la longitud de contorno promedio de las moléculas. [m]
         """
         n_steps, n_atoms, _ = self.coordinates.shape
         nm = n_atoms // nb  # Número de moléculas
@@ -720,8 +720,8 @@ class Trajectory:
             nb (int): Número de átomos por molécula.
 
         Returns:
-            float: Longitud end-to-end promedio de las moléculas. [adim]
-            float: Desviación estandard de la longitud end-to-end de las moléculas. [adim]
+            float: Longitud end-to-end promedio de las moléculas. [m]
+            float: Desviación estandard de la longitud end-to-end de las moléculas. [m]
         """
         n_steps, n_atoms, _ = self.coordinates.shape
         nm = n_atoms // nb  # Número de moléculas
