@@ -656,3 +656,53 @@ class Trajectory:
 
             mc_pair_correlations[step] = g_of_r / rho
         return  bins_distances[1:] ,np.mean(mc_pair_correlations , axis=0), np.std(mc_pair_correlations, axis=0)
+    
+
+    import numpy as np
+
+
+    def calculate_contour_length(self, nb):
+        """
+        Calcula la longitud de contorno promedio de moléculas lineales en la trayectoria.
+        
+        Needs:
+            *self.coordinates: atoms positions [m]
+            *self.boxsize: box [m]
+
+        Parameters:
+            nb (int): Número de átomos por molécula.
+
+        Returns:
+            float: Longitud de contorno promedio de las moléculas.
+        """
+        n_steps, n_atoms, _ = self.coordinates.shape
+        nm = n_atoms // nb  # Número de moléculas
+
+        contour_lengths = []
+        for step in range(n_steps):
+            data_box = np.array(self.boxsize[step])  # Tamaño de la caja en este paso
+            box = (data_box[:, 1] - data_box[:, 0]) * 0.5
+            data_beads = np.array(self.coordinates[step])  # Coordenadas de los átomos en este paso
+            
+            for mol in range(nm):
+                molecule = data_beads[mol * nb:(mol + 1) * nb, :]  # Átomos de la molécula
+                molecule_unwrapped = np.zeros_like(molecule)
+                molecule_unwrapped[0, :] = molecule[0, :]
+                
+                # Desempaquetado para condiciones periódicas
+                for i in range(1, nb):
+                    for xyz in range(3):
+                        dist_z = molecule[i, xyz] - molecule_unwrapped[i - 1, xyz]
+                        if dist_z > box[xyz]:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz] - 2 * box[xyz]
+                        elif dist_z <= -box[xyz]:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz] + 2 * box[xyz]
+                        else:
+                            molecule_unwrapped[i, xyz] = molecule[i, xyz]
+                
+                # Calcular longitud de contorno (suma de distancias entre átomos consecutivos)
+                distances = np.linalg.norm(np.diff(molecule_unwrapped, axis=0), axis=1)
+                contour_lengths.append(np.sum(distances))
+        
+        average_contour_length = np.mean(contour_lengths)
+        return average_contour_length
