@@ -673,7 +673,7 @@ class Trajectory:
             nb (int): Número de átomos por molécula.
 
         Returns:
-            float: Longitud de contorno promedio de las moléculas.
+            float: Longitud de contorno promedio de las moléculas. [adim]
         """
         n_steps, n_atoms, _ = self.coordinates.shape
         nm = n_atoms // nb  # Número de moléculas
